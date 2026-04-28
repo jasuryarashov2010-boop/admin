@@ -7,8 +7,6 @@ import datetime
 import threading
 from groq import AsyncGroq
 from typing import Final, List, Dict, Optional, Any
-from aiogram import F, types
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, StateFilter
@@ -295,69 +293,21 @@ async def start_handler(message: Message, state: FSMContext):
     )
     await message.answer(text, reply_markup=UI.main_menu(uid))
 
-from aiogram import F, types
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 # --- 📝 TESTLAR RO'YXATI ---
 @dp.message(F.text == "📝 Testlar ro'yxati")
 async def list_tests(message: Message):
     tests = db.query("SELECT * FROM tests ORDER BY created_at DESC LIMIT 20", fetch="all")
-    
     if not tests:
         return await message.answer("Tizimda hozircha testlar mavjud emas.")
     
     text = f"📋 <b>Mavjud testlar ro'yxati:</b>\n{Config.UI_DIV}\n\n"
-    text += "Testni yuklab olish uchun quyidagi tugmalardan birini bosing 👇"
-    
-    builder = InlineKeyboardBuilder()
-    
     for t in tests:
-        # Ro'yxatda faqat qisqa ma'lumot qoladi
-        builder.button(
-            text=f"📄 {t['test_code']} - {t['title'][:20]}...", 
-            callback_data=f"view_test_{t['test_code']}"
-        )
+        text += f"🔖 <b>Kod:</b> <code>{t['test_code']}</code>\n"
+        text += f"📌 <b>Mavzu:</b> {t['title']}\n"
+        text += f"📏 <b>Savollar soni:</b> {len(t['answers'])}\n\n"
     
-    builder.adjust(1) # Tugmalarni ustma-ust chiroyli chiqishi uchun
-    await message.answer(text, reply_markup=builder.as_markup())
+    await message.answer(text)
 
-
-# --- 📄 TEST PDF VA MA'LUMOTLARINI YUBORISH ---
-@dp.callback_query(F.data.startswith("view_test_"))
-async def send_full_test(callback: types.CallbackQuery):
-    test_code = callback.data.replace("view_test_", "")
-    
-    # Bazadan testning barcha ma'lumotlarini olamiz
-    test = db.query("SELECT * FROM tests WHERE test_code = ?", (test_code,), fetch="one")
-    
-    if not test:
-        return await callback.answer("Xatolik: Test topilmadi!", show_alert=True)
-
-    # 1. Avval test haqida batafsil ma'lumot matnini tayyorlaymiz
-    caption_text = (
-        f"✅ <b>Test topildi!</b>\n"
-        f"{Config.UI_DIV}\n"
-        f"🔖 <b>Kod:</b> <code>{test['test_code']}</code>\n"
-        f"📌 <b>Mavzu:</b> {test['title']}\n"
-        f"📏 <b>Savollar soni:</b> {len(test['answers'])} ta\n"
-        f"📅 <b>Yaratilgan:</b> {test['created_at']}\n"
-        f"{Config.UI_DIV}\n"
-        f"⬇️ Fayl pastda yuklanmoqda..."
-    )
-
-    # 2. Agar bazada file_id bo'lsa, PDF faylni yuboramiz
-    if test.get('file_id'):
-        try:
-            await callback.message.answer_document(
-                document=test['file_id'],
-                caption=caption_text,
-                parse_mode="HTML"
-            )
-            await callback.answer() # "Loading" holatini to'xtatish
-        except Exception as e:
-            await callback.message.answer(f"❌ Faylni yuborishda xatolik: {e}")
-    else:
-        await callback.answer("Ushbu test uchun PDF fayl biriktirilmagan!", show_alert=True)
 # --- 🎯 TEST TEKSHIRISH ---
 @dp.message(F.text == "🎯 Test tekshirish")
 async def init_test_check(message: Message, state: FSMContext):
@@ -559,8 +509,7 @@ async def open_admin_panel(message: Message):
     if message.from_user.id != Config.ADMIN_ID: return
     await message.answer("👑 <b>Admin panelga xush kelibsiz!</b>", reply_markup=UI.admin_menu())
 
-# --- ➕ TEST QO'SHISH BOSHQICHMA-BOSHQICH ---
-
+# --- ➕ TEST QO'SHISH ---
 @dp.message(F.text == "➕ Test qo'shish")
 async def add_test_start(message: Message, state: FSMContext):
     if message.from_user.id != Config.ADMIN_ID: return
@@ -577,7 +526,7 @@ async def add_test_code(message: Message, state: FSMContext):
     
     await state.update_data(test_code=code)
     await state.set_state(AdminStates.add_test_title)
-    await message.answer("📝 Test sarlavhasini kiriting (Masalan: Biologiya 10-sinf):")
+    await message.answer("📝 Test sarlavhasini kiriting (Masalan: Biologiya 10-sinf chorak):")
 
 @dp.message(StateFilter(AdminStates.add_test_title))
 async def add_test_title(message: Message, state: FSMContext):
@@ -585,43 +534,20 @@ async def add_test_title(message: Message, state: FSMContext):
     
     await state.update_data(title=message.text)
     await state.set_state(AdminStates.add_test_answers)
-    await message.answer("🔑 To'g'ri javoblarni kiriting (Masalan: abcd...):")
+    await message.answer("🔑 Testning to'g'ri javoblarini uzluksiz ketma-ketlikda kiriting (Masalan: abcdabcdabcd):")
 
-# BU YERDA O'ZGARIŞH: Javoblarni olamiz va PDF so'raymiz
 @dp.message(StateFilter(AdminStates.add_test_answers))
 async def add_test_answers(message: Message, state: FSMContext):
     if message.text == UI.BTN_BACK: return await go_back(message, state)
     
-    answers = message.text.strip().lower().replace(" ", "")
-    await state.update_data(answers=answers) # Javoblarni vaqtinchalik saqlash
-    
-    await state.set_state(AdminStates.add_test_file) # Keyingi holatga o'tish
-    await message.answer("📄 Endi testning PDF faylini yuboring:")
-
-# PDF FAYLNI QABUL QILISH VA YAKUNLASH
-@dp.message(StateFilter(AdminStates.add_test_file), F.document)
-async def add_test_file(message: Message, state: FSMContext):
     data = await state.get_data()
-    file_id = message.document.file_id # Telegramdagi fayl manzili
+    answers = message.text.strip().lower().replace(" ", "")
     
-    # Ma'lumotlarni bazaga yozish (file_id bilan birga)
-    db.query(
-        "INSERT INTO tests (test_code, title, answers, file_id) VALUES (?,?,?,?)",
-        (data['test_code'], data['title'], data['answers'], file_id)
-    )
+    db.query("INSERT INTO tests (test_code, title, answers) VALUES (?,?,?)",
+             (data['test_code'], data['title'], answers))
     
     await state.clear()
-    await message.answer(
-        f"✅ <b>Test va PDF muvaffaqiyatli qo'shildi!</b>\n"
-        f"🔖 Kod: {data['test_code']}\n"
-        f"📏 Savollar: {len(data['answers'])} ta", 
-        reply_markup=UI.admin_menu()
-    )
-
-# Agar fayl o'rniga boshqa narsa yuborsa xatolik ko'rsatish
-@dp.message(StateFilter(AdminStates.add_test_file))
-async def add_test_file_error(message: Message):
-    await message.answer("⚠️ Iltimos, test faylini PDF formatida (hujjat shaklida) yuboring!")
+    await message.answer(f"✅ <b>Test muvaffaqiyatli qo'shildi!</b>\nKod: {data['test_code']}\nSavollar: {len(answers)} ta", reply_markup=UI.admin_menu())
 
 # --- 🗑 TESTNI O'CHIRISH ---
 @dp.message(F.text == "🗑 Testni o'chirish")
