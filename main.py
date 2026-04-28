@@ -10,116 +10,105 @@ import threading
 import uuid
 import random
 from typing import Final, List, Dict, Optional, Any, Union
-from dataclasses import dataclass
 
-# --- EXTERNAL LIBRARIES ---
+# --- AIOGRAM 3.X PROFESSIONAL STACK ---
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.types import (
-    Message, BotCommand, CallbackQuery, DefaultBotProperties, 
+    Message, BotCommand, CallbackQuery, 
     ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, 
-    InlineKeyboardButton, ErrorEvent
+    InlineKeyboardButton, ErrorEvent, BufferedInputFile
 )
+from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from groq import Groq
 from flask import Flask, jsonify
 from dotenv import load_dotenv
 
-# Konfiguratsiyani yuklash
+# Konfiguratsiya
 load_dotenv()
 
 # ==========================================================================================
-# 💎 GLOBAL SYSTEM CONFIGURATION (TITAN KERNEL)
+# 💎 TITAN KERNEL: SYSTEM PARAMETERS
 # ==========================================================================================
 class TitanKernel:
-    VERSION: Final[str] = "v15.0.TITAN.ULTIMATE"
+    VERSION: Final[str] = "v20.0.SUPREME.ASCENSION"
     BOT_TOKEN: Final[str] = os.getenv("BOT_TOKEN")
     GROQ_KEY: Final[str] = os.getenv("GROQ_API_KEY")
-    ADMINS: Final[List[int]] = [8588645504] # O'z IDingizni qo'shing
-    DB_NAME: str = "titan_core_v15.db"
+    ADMINS: Final[List[int]] = [8588645504]
+    DB_NAME: str = "titan_ascension_v20.db"
     
-    # --- EKOTIZIM PARAMETRLARI ---
+    # --- COMPLEX ECONOMY ---
     ECONOMY = {
-        "START_GOLD": 1000,
-        "QUERY_XP": 50,
-        "REFERRAL_GOLD": 1500,
-        "REFERRAL_XP": 2000,
-        "DAILY_BONUS": random.randint(200, 1000),
-        "TRANSFER_TAX": 0.05, # 5% komissiya
+        "START_GOLD": 5000,
+        "QUERY_XP": 75,
+        "REFERRAL_GOLD": 2500,
+        "REFERRAL_XP": 5000,
+        "DAILY_MIN": 500,
+        "DAILY_MAX": 3000,
+        "MINING_RATE_BASE": 0.5, # Har sekundda olinadigan oltin
     }
     
-    # --- RANGLAR VA DARAKALAR ---
-    RANKS = {
-        1: "Novice", 5: "Apprentice", 10: "Warrior", 
-        20: "Commander", 50: "Master", 100: "Titan"
+    # --- SHOP ITEMS ---
+    MARKET = {
+        "processor_v1": {"name": "⚡️ Nano Prosessor", "price": 10000, "boost": 2.0},
+        "neural_link": {"name": "🧠 Neyro-Link", "price": 50000, "boost": 10.0},
+        "titan_core": {"name": "💠 Titan Yadrosi", "price": 250000, "boost": 60.0}
     }
 
-    # --- DIZAYN ---
-    UI_SEP = "━━━━━━━━━━━━━━━━━━━━━"
-    HEADER = "🚀 <b>TITAN OMNI SYSTEM</b>"
+    START_TIME = datetime.datetime.now()
+    DIV = "<b>━━━━━━━━━━━━━━━━━━━━━</b>"
+    HEADER = "🌌 <b>TITAN OMNI: ASCENSION</b>"
 
 # ==========================================================================================
-# 🗄️ THREAD-SAFE DATABASE ENGINE (ULTRA RELIABLE)
+# 🗄️ ADVANCED DATA ENGINE (MULTI-THREADED & RELIABLE)
 # ==========================================================================================
 class DataEngine:
-    """Render muhitida ma'lumotlar bazasi bloklanishini oldini oluvchi dvigatel"""
     def __init__(self):
         self.conn = sqlite3.connect(TitanKernel.DB_NAME, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.lock = threading.Lock()
-        self._build_tables()
+        self._infrastructure_bootstrap()
 
-    def _build_tables(self):
+    def _infrastructure_bootstrap(self):
         with self.lock:
             with self.conn:
-                # Foydalanuvchilar jadvali
+                # 1. FOYDALANUVCHILAR
                 self.conn.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         uid INTEGER PRIMARY KEY,
                         name TEXT,
                         username TEXT,
-                        gold REAL DEFAULT 1000,
+                        gold REAL DEFAULT 5000,
                         xp INTEGER DEFAULT 0,
                         level INTEGER DEFAULT 1,
-                        referrals INTEGER DEFAULT 0,
+                        mining_power REAL DEFAULT 1.0,
+                        last_mine TIMESTAMP,
                         referred_by INTEGER,
-                        rank TEXT DEFAULT 'Novice',
-                        status TEXT DEFAULT 'active',
                         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                # AI Tarixi
+                # 2. INVENTAR
                 self.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS ai_logs (
+                    CREATE TABLE IF NOT EXISTS inventory (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        uid INTEGER,
+                        item_id TEXT,
+                        purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                # 3. AI SAVOL-JAVOB LOGLARI
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS neural_logs (
                         id TEXT PRIMARY KEY,
                         uid INTEGER,
-                        prompt TEXT,
+                        query TEXT,
                         response TEXT,
-                        timestamp DATETIME
-                    )
-                """)
-                # Tranzaksiyalar
-                self.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS transactions (
-                        tid TEXT PRIMARY KEY,
-                        sender_id INTEGER,
-                        receiver_id INTEGER,
-                        amount REAL,
-                        type TEXT,
-                        date TIMESTAMP
-                    )
-                """)
-                # Kunlik vazifalar
-                self.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS bonus_logs (
-                        uid INTEGER PRIMARY KEY,
-                        last_date DATE,
-                        streak INTEGER DEFAULT 0
+                        timestamp TIMESTAMP
                     )
                 """)
 
@@ -128,215 +117,191 @@ class DataEngine:
             try:
                 cursor = self.conn.cursor()
                 cursor.execute(sql, params)
-                if fetch == "one": return dict(cursor.fetchone()) if cursor.fetchone() else None
-                if fetch == "all": return [dict(r) for r in cursor.fetchall()]
+                if fetch == "one":
+                    res = cursor.fetchone()
+                    return dict(res) if res else None
+                if fetch == "all":
+                    return [dict(r) for r in cursor.fetchall()]
                 self.conn.commit()
                 return cursor.lastrowid
             except Exception as e:
-                logging.error(f"DB_ERROR: {e} | SQL: {sql}")
+                logging.error(f"ENGINE_FAULT: {e}")
                 return None
 
 db = DataEngine()
 
 # ==========================================================================================
-# 🧠 AI NEURAL PROCESSOR (GROQ V3)
+# 🧠 NEURAL CORE: AI PROFESSOR
 # ==========================================================================================
-class TitanAI:
+class NeuralCore:
     def __init__(self):
         self.client = Groq(api_key=TitanKernel.GROQ_KEY) if TitanKernel.GROQ_KEY else None
 
-    async def generate_response(self, uid: int, prompt: str) -> str:
-        if not self.client:
-            return "🔴 AI Professor offline rejimda. API kalitni tekshiring."
-
+    async def chat(self, uid: int, prompt: str) -> str:
+        if not self.client: return "🔴 Neural System is Offline."
         try:
-            # Tizimga shaxsiyat yuklash
-            response = self.client.chat.completions.create(
+            comp = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "Siz Titan Omni tizimining bosh AI-miyasiz. O'zbek tilida ilmiy, aniq va do'stona javob berasiz."},
+                    {"role": "system", "content": "Siz Titan Akademiyasining Oliy Professori emassiz. Siz ekotizimning bir qismisiz."},
                     {"role": "user", "content": prompt}
                 ],
                 model="llama-3.3-70b-versatile",
-                max_tokens=2048,
-                temperature=0.6
+                temperature=0.7
             )
-            ans = response.choices[0].message.content
-            
-            # Logga yozish
-            db.execute("INSERT INTO ai_logs VALUES (?,?,?,?,?)", 
+            ans = comp.choices[0].message.content
+            db.execute("INSERT INTO neural_logs VALUES (?,?,?,?,?)",
                       (str(uuid.uuid4()), uid, prompt, ans, datetime.datetime.now()))
             return ans
         except Exception as e:
-            logging.error(f"AI_CRITICAL: {e}")
-            return "⚠️ Neyrotizimda xatolik yuz berdi. Birozdan so'ng urinib ko'ring."
+            return f"⚠️ Aloqa uzildi: {e}"
 
-ai = TitanAI()
+ai = NeuralCore()
 
 # ==========================================================================================
 # 🎭 STATES & INTERFACE
 # ==========================================================================================
-class TitanStates(StatesGroup):
+class OmniStates(StatesGroup):
     registration = State()
-    main_hub = State()
-    ai_chat = State()
-    transfer_id = State()
-    transfer_amount = State()
-    admin_broadcast = State()
+    ai_professor = State()
+    broadcast = State()
 
-class TitanUI:
+class UI:
     @staticmethod
     def main_menu(uid: int):
-        builder = ReplyKeyboardBuilder()
-        builder.row(KeyboardButton(text="🧠 AI TITAN"), KeyboardButton(text="👤 PROFIL"))
-        builder.row(KeyboardButton(text="💰 HAMYON"), KeyboardButton(text="🏆 REYTING"))
-        builder.row(KeyboardButton(text="🤝 HAMKORLAR"), KeyboardButton(text="🎁 KUNLIK BONUS"))
-        builder.row(KeyboardButton(text="⚙️ SOZLAMALAR"))
-        
+        kb = ReplyKeyboardBuilder()
+        kb.row(KeyboardButton(text="🧠 AI PROFESSOR"), KeyboardButton(text="👤 PROFIL"))
+        kb.row(KeyboardButton(text="⛏ MINING"), KeyboardButton(text="🛒 DO'KON"))
+        kb.row(KeyboardButton(text="🏆 REYTING"), KeyboardButton(text="🎁 BONUS"))
+        kb.row(KeyboardButton(text="👥 DO'STLAR"), KeyboardButton(text="⚙️ SOZLAMALAR"))
         if uid in TitanKernel.ADMINS:
-            builder.row(KeyboardButton(text="👑 ADMIN PANEL"))
-        
-        return builder.as_markup(resize_keyboard=True)
+            kb.row(KeyboardButton(text="👑 SUPREME PANEL"))
+        return kb.as_markup(resize_keyboard=True)
 
     @staticmethod
-    def inline_back():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_to_menu")]
-        ])
+    def shop_keyboard():
+        kb = InlineKeyboardBuilder()
+        for k, v in TitanKernel.MARKET.items():
+            kb.row(InlineKeyboardButton(text=f"{v['name']} | {v['price']} 🪙", callback_data=f"buy_{k}"))
+        return kb.as_markup()
 
 # ==========================================================================================
-# 🤖 BOT LOGIC & HANDLERS
+# 🤖 BOT CORE LOGIC
 # ==========================================================================================
 bot = Bot(token=TitanKernel.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- MIDDLEWARE: USER AUTO-CHECK ---
-@dp.message.outer_middleware()
-async def user_middleware(handler, event: Message, data: dict):
-    if not event.from_user: return await handler(event, data)
-    
-    uid = event.from_user.id
-    user = db.execute("SELECT * FROM users WHERE uid = ?", (uid,), fetch="one")
-    
-    if not user and not event.text.startswith("/start"):
-        await event.answer("⚠️ Tizimdan foydalanish uchun avval /start buyrug'ini bosing.")
-        return
-    
-    return await handler(event, data)
-
-# --- COMMANDS ---
+# --- START & REGISTRATION ---
 @dp.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def titan_start(message: Message, state: FSMContext):
     uid = message.from_user.id
     user = db.execute("SELECT * FROM users WHERE uid = ?", (uid,), fetch="one")
     
-    # Referal tizimi
-    ref_id = None
-    args = message.text.split()
-    if len(args) > 1 and args[1].isdigit():
-        ref_id = int(args[1])
-
     if not user:
-        await state.update_data(ref_id=ref_id)
-        await state.set_state(TitanStates.registration)
-        return await message.answer(
-            f"{TitanKernel.HEADER}\n{TitanKernel.UI_SEP}\n"
-            "Xush kelibsiz! Titan ekotizimiga kirish uchun <b>Ismingizni kiriting:</b>"
-        )
+        args = message.text.split()
+        ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+        
+        db.execute("INSERT INTO users (uid, name, username, referred_by, last_mine) VALUES (?,?,?,?,?)",
+                  (uid, message.from_user.full_name, message.from_user.username, ref_id, datetime.datetime.now()))
+        
+        if ref_id and ref_id != uid:
+            db.execute("UPDATE users SET gold = gold + ?, xp = xp + ? WHERE uid = ?",
+                      (TitanKernel.ECONOMY["REFERRAL_GOLD"], TitanKernel.ECONOMY["REFERRAL_XP"], ref_id))
+            try: await bot.send_message(ref_id, "🎊 <b>Yangi hamkor!</b> Balansga bonus qo'shildi.")
+            except: pass
 
-    await message.answer(f"Xush kelibsiz, <b>{user['name']}</b>!", reply_markup=TitanUI.main_menu(uid))
+        await message.answer(f"{TitanKernel.HEADER}\n{TitanKernel.DIV}\nTitan Ascension tizimiga xush kelibsiz!", 
+                             reply_markup=UI.main_menu(uid))
+    else:
+        await message.answer(f"Xush kelibsiz, {user['name']}!", reply_markup=UI.main_menu(uid))
 
-@dp.message(TitanStates.registration)
-async def process_reg(message: Message, state: FSMContext):
+# --- MINING SYSTEM ---
+@dp.message(F.text == "⛏ MINING")
+async def mining_center(message: Message):
     uid = message.from_user.id
-    name = message.text
-    data = await state.get_data()
-    ref_id = data.get("ref_id")
+    user = db.execute("SELECT * FROM users WHERE uid = ?", (uid,), fetch="one")
     
-    # Foydalanuvchini yaratish
-    db.execute(
-        "INSERT INTO users (uid, name, username, referred_by) VALUES (?,?,?,?)",
-        (uid, name, message.from_user.username, ref_id)
-    )
+    now = datetime.datetime.now()
+    last_mine = datetime.datetime.strptime(user['last_mine'], "%Y-%m-%d %H:%M:%S.%f")
+    seconds_passed = (now - last_mine).total_seconds()
     
-    if ref_id and ref_id != uid:
-        db.execute("UPDATE users SET gold = gold + ?, xp = xp + ?, referrals = referrals + 1 WHERE uid = ?", 
-                  (TitanKernel.ECONOMY["REFERRAL_GOLD"], TitanKernel.ECONOMY["REFERRAL_XP"], ref_id))
-        try:
-            await bot.send_message(ref_id, f"🎊 <b>Yangi hamkor!</b>\nSizga {TitanKernel.ECONOMY['REFERRAL_GOLD']} oltin berildi.")
-        except: pass
-
-    await message.answer("✅ Ro'yxatdan muvaffaqiyatli o'tdingiz!", reply_markup=TitanUI.main_menu(uid))
-    await state.clear()
-
-# --- AI INTERACTION ---
-@dp.message(F.text == "🧠 AI TITAN")
-async def ai_start(message: Message, state: FSMContext):
-    await state.set_state(TitanStates.ai_chat)
-    await message.answer("🧠 <b>Titan AI Professor sizni eshitadi.</b>\nSavolingizni yo'llang (Chiqish uchun: /stop):")
-
-@dp.message(TitanStates.ai_chat)
-async def ai_process(message: Message, state: FSMContext):
-    if message.text == "/stop":
-        await state.clear()
-        return await message.answer("AI to'xtatildi.", reply_markup=TitanUI.main_menu(message.from_user.id))
-
-    loading = await message.answer("⚡️ <i>Titan hisoblamoqda...</i>")
-    response = await ai.generate_response(message.from_user.id, message.text)
+    earned = seconds_passed * TitanKernel.ECONOMY["MINING_RATE_BASE"] * user['mining_power']
     
-    # Mukofotlash
-    db.execute("UPDATE users SET xp = xp + ? WHERE uid = ?", (TitanKernel.ECONOMY["QUERY_XP"], message.from_user.id))
-    
-    try:
-        await loading.edit_text(response)
-    except:
-        await message.answer(response)
+    if earned > 1:
+        db.execute("UPDATE users SET gold = gold + ?, last_mine = ? WHERE uid = ?", (earned, now, uid))
+        await message.answer(f"⛏ <b>Mining Natijasi:</b>\n{TitanKernel.DIV}\nSiz <b>{earned:.2f}</b> oltin qazib oldingiz!")
+    else:
+        await message.answer(f"⛏ <b>Mining Faol...</b>\nHozircha juda kam oltin yig'ildi. Biroz kuting.")
 
-# --- PROFILE & ECONOMY ---
+# --- PROFILE ---
 @dp.message(F.text == "👤 PROFIL")
-async def cmd_profile(message: Message):
+async def show_profile(message: Message):
     u = db.execute("SELECT * FROM users WHERE uid = ?", (message.from_user.id,), fetch="one")
+    items = db.execute("SELECT count(*) as count FROM inventory WHERE uid = ?", (u['uid'],), fetch="one")
+    
     text = (
-        f"👤 <b>TITAN USER PROFILE</b>\n{TitanKernel.UI_SEP}\n"
-        f"ID: <code>{u['uid']}</code>\n"
+        f"👤 <b>USER ANALYTICS</b>\n{TitanKernel.DIV}\n"
         f"Ism: <b>{u['name']}</b>\n"
-        f"Daraja: <b>{u['level']} [{u['rank']}]</b>\n"
         f"Oltin: <b>{u['gold']:.2f} 🪙</b>\n"
         f"XP: <b>{u['xp']}</b>\n"
-        f"Hamkorlar: <b>{u['referrals']} ta</b>\n"
-        f"{TitanKernel.UI_SEP}"
+        f"Quvvat: <b>x{u['mining_power']}</b>\n"
+        f"Buyumlar: <b>{items['count']} ta</b>\n"
+        f"{TitanKernel.DIV}"
     )
     await message.answer(text)
 
-@dp.message(F.text == "🎁 KUNLIK BONUS")
-async def cmd_bonus(message: Message):
-    uid = message.from_user.id
-    today = datetime.date.today()
-    log = db.execute("SELECT * FROM bonus_logs WHERE uid = ?", (uid,), fetch="one")
+# --- AI PROFESSOR ---
+@dp.message(F.text == "🧠 AI PROFESSOR")
+async def ai_init(message: Message, state: FSMContext):
+    await state.set_state(OmniStates.ai_professor)
+    await message.answer("🧠 <b>Professor bilan aloqa o'rnatildi.</b>\nSavolingizni yuboring (Chiqish: /cancel):")
+
+@dp.message(OmniStates.ai_professor)
+async def ai_process(message: Message, state: FSMContext):
+    if message.text == "/cancel":
+        await state.clear()
+        return await message.answer("Asosiy menyuga qaytildi.", reply_markup=UI.main_menu(message.from_user.id))
     
-    if log and log['last_date'] == str(today):
-        return await message.answer("❌ Bugun bonus olgansiz. Ertaga qaytib keling!")
+    thinking = await message.answer("🔄 <i>Neyrotizim ma'lumotni qayta ishlamoqda...</i>")
+    ans = await ai.chat(message.from_user.id, message.text)
     
-    amount = TitanKernel.ECONOMY["DAILY_BONUS"]
-    if not log:
-        db.execute("INSERT INTO bonus_logs (uid, last_date, streak) VALUES (?,?,?)", (uid, today, 1))
+    db.execute("UPDATE users SET xp = xp + ? WHERE uid = ?", (TitanKernel.ECONOMY["QUERY_XP"], message.from_user.id))
+    await thinking.edit_text(ans)
+
+# --- SHOP SYSTEM ---
+@dp.message(F.text == "🛒 DO'KON")
+async def shop_center(message: Message):
+    await message.answer("🛒 <b>Titan Texnologiyalari Do'koni:</b>\nUskunalar mining tezligini oshiradi.", 
+                         reply_markup=UI.shop_keyboard())
+
+@dp.callback_query(F.data.startswith("buy_"))
+async def process_purchase(callback: CallbackQuery):
+    uid = callback.from_user.id
+    item_key = callback.data.split("_")[1]
+    item = TitanKernel.MARKET[item_key]
+    
+    user = db.execute("SELECT gold FROM users WHERE uid = ?", (uid,), fetch="one")
+    
+    if user['gold'] >= item['price']:
+        db.execute("UPDATE users SET gold = gold - ?, mining_power = mining_power + ? WHERE uid = ?",
+                  (item['price'], item['boost'], uid))
+        db.execute("INSERT INTO inventory (uid, item_id) VALUES (?,?)", (uid, item_key))
+        await callback.answer("✅ Muvaffaqiyatli xarid qilindi!", show_alert=True)
+        await callback.message.edit_text(f"🎁 Siz <b>{item['name']}</b> sotib oldingiz!")
     else:
-        db.execute("UPDATE bonus_logs SET last_date = ?, streak = streak + 1 WHERE uid = ?", (today, uid))
-    
-    db.execute("UPDATE users SET gold = gold + ? WHERE uid = ?", (amount, uid))
-    await message.answer(f"🎁 <b>Tabriklaymiz!</b>\nSizga bugun {amount} oltin berildi!")
+        await callback.answer("❌ Mablag' yetarli emas!", show_alert=True)
 
 # ==========================================================================================
-# 🌐 WEB SERVER & RENDER KEEP-ALIVE
+# 🌐 PRODUCTION WEB SERVER (RENDER KEEP-ALIVE)
 # ==========================================================================================
 app = Flask(__name__)
 
 @app.route('/')
-def status():
+def live_check():
     return jsonify({
-        "status": "online",
-        "system": "TITAN_OMNI",
-        "version": TitanKernel.VERSION,
-        "active_users": len(db.execute("SELECT uid FROM users", fetch="all"))
+        "status": "OPERATIONAL",
+        "system": "TITAN_OMNI_V20",
+        "uptime": str(datetime.datetime.now() - TitanKernel.START_TIME),
+        "db_health": "OPTIMAL"
     })
 
 def run_flask():
@@ -344,33 +309,27 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 # ==========================================================================================
-# 🚀 SYSTEM BOOTSTRAP
+# 🚀 SYSTEM BOOTSTRAP (EXECUTION)
 # ==========================================================================================
-async def main():
-    # Render uchun Flaskni alohida threadga o'tkazish
+async def titan_engine_startup():
+    # Flaskni alohida thread ichida yoqish (Render Port Health Check uchun)
     threading.Thread(target=run_flask, daemon=True).start()
     
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     
-    # Bot buyruqlarini sozlash
     await bot.set_my_commands([
         BotCommand(command="start", description="Tizimni ishga tushirish"),
-        BotCommand(command="help", description="Yordam markazi"),
-        BotCommand(command="profile", description="Profilni ko'rish")
+        BotCommand(command="profile", description="Shaxsiy statistika"),
+        BotCommand(command="help", description="Yordam markazi")
     ])
     
-    logging.info(f"TITAN CORE {TitanKernel.VERSION} IS RUNNING...")
+    print(f"--- TITAN OMNI {TitanKernel.VERSION} IS LIVE ---")
     
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
-    except Exception as e:
-        logging.critical(f"FATAL_ERROR: {e}")
-    finally:
-        await bot.session.close()
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(titan_engine_startup())
     except (KeyboardInterrupt, SystemExit):
-        logging.info("TITAN ENGINE OFFLINE.")
+        print("Tizim to'xtatildi.")
