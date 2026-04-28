@@ -5,6 +5,7 @@ import os
 import json
 import datetime
 import threading
+from groq import AsyncGroq
 from typing import Final, List, Dict, Optional, Any
 
 from aiogram import Bot, Dispatcher, types, F
@@ -105,36 +106,109 @@ class DataEngine:
                 return None
 
 db = DataEngine()
-
 # ==========================================================================================
-# 🧠 AI NEYRO-TIZIM (GROQ INTEGRATION)
+# 🧠 AI NEYRO-TIZIM (ADVANCED PRO EDITION)
 # ==========================================================================================
 class NeuralCore:
     def __init__(self):
-        self.client = Groq(api_key=Config.GROQ_KEY) if Config.GROQ_KEY else None
+        # Konfiguratsiya: Render muhitidan xavfsiz yuklash
+        self.api_key = os.getenv("GROQ_API_KEY")
+        self.model = "llama-3.3-70b-versatile"
+        self.temperature = 0.5  # O'quv tahlillari uchun aniqlik darajasi
+        self.max_retries = 3    # API xatolarida qayta urinishlar soni
+        
+        # Asinxron Groq mijozini yaratish
+        self.client = AsyncGroq(api_key=self.api_key) if self.api_key else None
+        
+        if not self.client:
+            logging.error("❌ CRITICAL: GROQ_API_KEY topilmadi! AI tahlil o'chirilgan.")
 
-    async def ask_ai(self, prompt: str, context: str = "Siz aqlli, mehribon va o'zbek tilida mukammal javob beradigan AI Ustozsiz.") -> str:
-        if not self.client: return "🔴 AI moduli faollashtirilmagan (API kalit xatosi)."
-        try:
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": context},
-                    {"role": "user", "content": prompt}
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.7
-            )
-            return completion.choices[0].message.content
-        except Exception as e:
-            return f"⚠️ Tizim xatoligi: {str(e)}"
+    async def _execute_with_retry(self, messages: List[Dict[str, str]]) -> str:
+        """
+        API so'rovlarini xavfsiz bajarish va xatolik bo'lsa qayta urinish mexanizmi.
+        Bu botni kutilmagan to'xtashlardan asraydi.
+        """
+        for attempt in range(self.max_retries):
+            try:
+                # Asinxron so'rov (Botni bloklamaydi)
+                completion = await self.client.chat.completions.create(
+                    messages=messages,
+                    model=self.model,
+                    temperature=self.temperature,
+                    max_tokens=3500, # Uzun tahlillar uchun yetarli joy
+                    top_p=0.9,
+                )
+                
+                # Statistika uchun (Loglarda ko'rinadi)
+                tokens = completion.usage.total_tokens
+                logging.info(f"🤖 AI Javobi muvaffaqiyatli: {tokens} token sarflandi.")
+                
+                return completion.choices[0].message.content
+
+            except Exception as e:
+                error_msg = str(e).lower()
+                logging.warning(f"⚠️ AI urinish {attempt+1} xatosi: {error_msg}")
+                
+                # Agar limit tugagan bo'lsa yoki server xatosi bo'lsa, biroz kutamiz
+                if attempt < self.max_retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    await asyncio.sleep(wait_time)
+                else:
+                    if "rate_limit" in error_msg:
+                        return "🔴 Kechirasiz, AI hozirda juda ko'p so'rov qabul qilmoqda. 1 daqiqadan so'ng urinib ko'ring."
+                    return f"⚠️ Tizimda texnik muammo yuz berdi. (Xato turi: {type(e).__name__})"
+
+    async def ask_ai(self, prompt: str, context: str = "Siz Titan Academy platformasining aqlli va mehribon AI ustozisiz.") -> str:
+        """Ixtiyoriy savollarga javob berish (General Purpose)"""
+        if not self.client:
+            return "🔴 AI xizmati faollashtirilmagan."
+
+        messages = [
+            {"role": "system", "content": context},
+            {"role": "user", "content": prompt}
+        ]
+        return await self._execute_with_retry(messages)
 
     async def analyze_mistakes(self, test_title: str, wrong_answers: dict) -> str:
-        prompt = f"O'quvchi '{test_title}' testida quyidagi xatolarni qildi:\n"
-        for q_num, data in wrong_answers.items():
-            prompt += f"{q_num}-savol: U '{data['user']}' deb belgilagan, to'g'ri javob esa '{data['correct']}'.\n"
-        prompt += "\nIltimos, ushbu xatolarni tahlil qilib, to'g'ri javoblarning sababini qisqa va tushunarli qilib o'zbek tilida tushuntirib bering."
-        return await self.ask_ai(prompt, "Siz o'quvchilar xatosini tahlil qilib beruvchi mehribon ustozsiz.")
+        """
+        O'quvchining xatolarini chuqur pedagogik tahlil qilish.
+        """
+        if not wrong_answers:
+            return "🌟 <b>Tabriklayman!</b> Siz barcha savollarga to'g'ri javob berdingiz. Bilimingiz a'lo darajada!"
 
+        # Xatolarni chiroyli va tartibli ko'rinishga keltirish
+        wrongs_formatted = ""
+        for q_num, data in wrong_answers.items():
+            wrongs_formatted += (
+                f"📍 <b>Savol №{q_num}</b>\n"
+                f"❌ Sizning tanlovingiz: <i>{data['user']}</i>\n"
+                f"✅ To'g'ri javob: <b>{data['correct']}</b>\n"
+                f"{'—' * 10}\n"
+            )
+
+        # AI uchun maxsus Master-Prompt
+        analysis_prompt = (
+            f"O'quvchi '{test_title}' testini topshirdi va quyidagi xatolarni qildi:\n\n"
+            f"{wrongs_formatted}\n"
+            "Iltimos, ushbu xatolarning har birini professional pedagog sifatida tahlil qiling. "
+            "To'g'ri javob nega aynan shu ekanligini mantiqiy, ilmiy va tushunarli tushuntiring. "
+            "Javob oxirida o'quvchiga motivatsiya beruvchi so'zlar yozing."
+        )
+
+        system_instruction = (
+            "Siz o'zbek tilida so'zlashuvchi, tajribali va juda sabrli ustozsiz. "
+            "O'quvchini xatosi uchun urushmang, aksincha xatodan bilim olishga yo'naltiring. "
+            "Javobingizda HTML teglardan (<b>, <i>) foydalanib, chiroyli formatlang."
+        )
+
+        return await self.ask_ai(analysis_prompt, system_instruction)
+
+    async def generate_study_plan(self, results: List[Dict[str, Any]]) -> str:
+        """O'quvchining bir nechta test natijalariga qarab individual reja tuzish"""
+        prompt = f"O'quvchining oxirgi natijalari: {results}. Uning kuchsiz tomonlarini aniqlang va o'qish rejasini tuzing."
+        return await self.ask_ai(prompt, "Siz strategik ta'lim bo'yicha mutaxassisiz.")
+
+# Global initsializatsiya
 ai_engine = NeuralCore()
 
 # ==========================================================================================
