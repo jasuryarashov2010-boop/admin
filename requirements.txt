@@ -1,4 +1,2 @@
-aiogram>=3.4.1
-aiohttp>=3.9.3
-python-dotenv>=1.0.1
-# Kelajakda Postgres uchun: asyncpg, sqlalchemy
+aiogram>=3.4
+aiohttp>=3.
